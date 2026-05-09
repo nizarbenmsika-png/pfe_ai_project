@@ -1,0 +1,60 @@
+# ════════════════════════════════════════════════════════════════
+# docker-compose.yml — Orchestration EduAI
+# À placer à la RACINE du projet : pfe_ai_project/docker-compose.yml
+#
+# Lance 3 conteneurs connectés :
+#   - db       : PostgreSQL 16
+#   - backend  : FastAPI (API REST)
+#   - frontend : nginx (interface web)
+# ════════════════════════════════════════════════════════════════
+
+services:
+
+  # ─── BASE DE DONNÉES POSTGRESQL ──────────────────────────────
+  db:
+    image: postgres:16
+    container_name: eduai_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Données persistantes
+      - pgdata:/var/lib/postgresql/data
+      # Script d'init au premier démarrage
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── BACKEND FASTAPI ─────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: eduai_backend
+    restart: unless-stopped
+    environment:
+      # "db" = nom du service Docker, agit comme un hostname
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ─── FRONTEND NGINX ──────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: eduai_frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
